@@ -89,93 +89,164 @@ size_t writefunc(void *ptr, size_t size, size_t nmemb, String *s) {
     return size * nmemb;
 }
 
-Response* chat(OpenAI* openai, const char* model, const char* messages, float temperature) {
-    CURL* curl;
-    CURLcode res;
+void destroyChoicesList(Choices** choicesList, int count) {
+    if (choicesList == NULL) {
+        return;
+    }
 
-    // Create URL endpoint
+    for (int i = 0; i < count; i++) {
+        destroyChoices(choicesList[i]);
+    }
+
+    free(choicesList);
+}
+
+
+void destroyMessage(Message* message) {
+    if (message == NULL) {
+        return;
+    }
+
+    if (message->content) {
+        free(message->content);
+    }
+    
+    free(message->role);
+    free(message);
+}
+
+Response* chat(OpenAI* openai, const char* model, const char* messages, float temperature) {
+    
+    Response* response = NULL;
+    char* url = NULL;
+    char* authHeader = NULL;
+    char* requestBody = NULL;
+    cJSON *root = NULL;
+
+    // Create URL Endpoint
     int length = snprintf(NULL, 0, "%s/%s", openai->_options->baseURL, "v1/chat/completions");
-    char* url = (char*) malloc(length + 1);
+    url = (char*) malloc(length + 1);
     if (url == NULL) {
-        return NULL;
+        goto Exit;
     }
     snprintf(url, length + 1, "%s/%s", openai->_options->baseURL, "v1/chat/completions");
-
+    
     // Create Authorization Header
     length = snprintf(NULL, 0, "Authorization: Bearer %s", openai->apiKey);
-    char* authHeader = (char*) malloc(length + 1);
+    authHeader = (char*) malloc(length + 1);
     if (authHeader == NULL) {
-        free(url);
-        return NULL;
+        goto Exit;
     }
     snprintf(authHeader, length + 1, "Authorization: Bearer %s", openai->apiKey);
 
     // Create request body
     length = snprintf(NULL, 0, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}], \"temperature\": %.1f}", model, messages, temperature);
-    char* requestBody = (char*) malloc(length + 1);
+    requestBody = (char*) malloc(length + 1);
     if (requestBody == NULL) {
-        free(url);
-        free(authHeader);
-        return NULL;
+        goto Exit;
     }
     snprintf(requestBody, length + 1, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}], \"temperature\": %.1f}", model, messages, temperature);
     
     String s;
     initString(&s);
 
-    curl = curl_easy_init();
-    if (curl) {
-        struct curl_slist* headers = NULL;
-        headers = curl_slist_append(headers, "Content-Type: application/json");
-        headers = curl_slist_append(headers, authHeader);
-        curl_easy_setopt(curl, CURLOPT_URL, url);
-        curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-        curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBody);
-        curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
-        curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
-
-        res = curl_easy_perform(curl);
-       
-        curl_slist_free_all(headers);
-        curl_easy_cleanup(curl);
-
-        Response* response = (Response*) malloc(sizeof(Response));
-        if (response == NULL) {
-            free(url);
-            free(requestBody);
-            free(authHeader);
-            return NULL;
-        }
-        printf("%s\n", s.ptr);
-
-        cJSON *root = cJSON_Parse(s.ptr);
-        const char *id = cJSON_GetObjectItemCaseSensitive(root, "id")->valuestring;
-        const char *object = cJSON_GetObjectItemCaseSensitive(root, "object")->valuestring;
-        int created = cJSON_GetObjectItemCaseSensitive(root, "created")->valueint;
-        const char *model = cJSON_GetObjectItemCaseSensitive(root, "model")->valuestring;
-        const char *finish_reason = cJSON_GetObjectItemCaseSensitive(cJSON_GetArrayItem(cJSON_GetObjectItemCaseSensitive(root, "choices"), 0), "finish_reason")->valuestring;
-        int prompt_tokens = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(root, "usage"), "prompt_tokens")->valueint;
-        int completion_tokens = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(root, "usage"), "completion_tokens")->valueint;
-        int total_tokens = cJSON_GetObjectItemCaseSensitive(cJSON_GetObjectItemCaseSensitive(root, "usage"), "total_tokens")->valueint;
-        const char *system_fingerprint = cJSON_GetObjectItemCaseSensitive(root, "system_fingerprint")->valuestring;
-
-        response->id = id;
-        response->object = object;
-        response->created = created;
-        response->model = model;
-        response->finish_reason = finish_reason;
-        response->completion_tokens = completion_tokens;
-        response->total_tokens = total_tokens;
-        response->system_fingerprint = system_fingerprint;
-        free(s.ptr);
-        return response;
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        goto Exit;
     }
 
-    free(url);
-    free(requestBody);
-    free(authHeader);
-    return NULL;
+    // Set up CURL request
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    headers = curl_slist_append(headers, authHeader);
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBody);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
 
+    CURLcode res = curl_easy_perform(curl);
+
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
+    response = (Response*) malloc(sizeof(Response));
+    if (response == NULL) {
+        goto Exit;
+    }
+
+    root = cJSON_Parse(s.ptr);
+
+    char *id = cJSON_GetObjectItemCaseSensitive(root, "id")->valuestring;
+    char *object = cJSON_GetObjectItemCaseSensitive(root, "object")->valuestring;
+    int created = cJSON_GetObjectItemCaseSensitive(root, "created")->valueint;
+    const char *model_string = cJSON_GetObjectItemCaseSensitive(root, "model")->valuestring;
+    char *system_fingerprint = cJSON_GetObjectItemCaseSensitive(root, "system_fingerprint")->valuestring;
+
+    // TODO: Robustly check for NULL
+    response->id = strdup(id);
+    response->object = strdup(object);
+    response->created = created;
+    response->model = strdup(model_string);
+    response->system_fingerprint = strdup(system_fingerprint);
+
+    cJSON* usageJSON = cJSON_GetObjectItemCaseSensitive(root, "usage");
+    response->usage = (Usage*) malloc(sizeof(Usage));
+    response->usage->prompt_tokens = cJSON_GetObjectItemCaseSensitive(usageJSON, "prompt_tokens")->valueint;
+    response->usage->completion_tokens = cJSON_GetObjectItemCaseSensitive(usageJSON, "completion_tokens")->valueint;
+    response->usage->total_tokens = cJSON_GetObjectItemCaseSensitive(usageJSON, "total_tokens")->valueint;
+
+    cJSON *choicesJSON = cJSON_GetObjectItemCaseSensitive(root, "choices");
+    int choiceCount = cJSON_GetArraySize(choicesJSON);
+
+    response->choices = (Choices**) malloc(choiceCount * sizeof(Choices*));
+    if (!response->choices) {
+        free(response);
+        goto Exit;
+    }
+
+    for (size_t i = 0; i < choiceCount; i++) {
+        // TODO: Check for Malloc failure
+        response->choices[i] = (Choices*) malloc(sizeof(Choices));
+        cJSON* choice = cJSON_GetArrayItem(choicesJSON, i);
+
+        int index = cJSON_GetObjectItemCaseSensitive(choice, "index")->valueint;
+
+        cJSON *logprobsObject = cJSON_GetObjectItemCaseSensitive(choice, "logprobs");
+        if (logprobsObject != NULL) {
+            if (cJSON_IsString(logprobsObject)) {
+                response->choices[i]->logprobs = strdup(logprobsObject->valuestring);
+            } else if (cJSON_IsNull(logprobsObject)) {
+                response->choices[i]->logprobs = NULL; // or set it to a default value
+            }
+        }
+
+        char* finish_reason = cJSON_GetObjectItemCaseSensitive(choice, "finish_reason")->valuestring;
+
+        response->choices[i]->index = index;
+        response->choices[i]->finish_reason = strdup(finish_reason);
+
+        cJSON* messageJSON = cJSON_GetObjectItemCaseSensitive(choice, "message");
+        response->choices[i]->message = (Message*) malloc(sizeof(Message));
+
+        cJSON *messageObject = cJSON_GetObjectItemCaseSensitive(messageJSON, "role");
+        response->choices[i]->message->role = strdup(messageObject->valuestring);
+
+        cJSON *contentObject = cJSON_GetObjectItemCaseSensitive(messageJSON, "content");
+        response->choices[i]->message->content = strdup(contentObject->valuestring);
+
+    }
+
+    response->choices_count = choiceCount;
+
+Exit:
+    free(url);
+    free(authHeader);
+    free(requestBody);
+    free(s.ptr);
+    cJSON_Delete(root);
+
+    return response;
 }
 
 void destroyResponse(Response* response) {
@@ -186,11 +257,31 @@ void destroyResponse(Response* response) {
     free(response->id);
     free(response->object);
     free(response->model);
-    free(response->message_role);
-    free(response->message_content);
-    free(response->finish_reason);
     free(response->system_fingerprint);
+    if (response->choices != NULL) {
+        for (int i = 0; i < response->choices_count; i++) {
+            destroyChoices(response->choices[i]);
+        }
+        free(response->choices);
+    }
 
     // Free the response object itself
     free(response);
+}
+
+void destroyChoices(Choices* choice) {
+    if (choice == NULL) {
+        return;
+    }
+
+    if (choice->message != NULL) {
+        free(choice->message->content);
+        free(choice->message->role);
+        free(choice->message);
+    }
+
+    if (choice->logprobs != NULL) {
+        free(choice->logprobs);
+    }
+    free(choice->finish_reason);
 }

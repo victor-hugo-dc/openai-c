@@ -1,23 +1,9 @@
-# CC = gcc
-# CFLAGS = -g -Wall
-
-# BIN = main
-# SRC = main.c openai.c  # Add openai.c here
-
-# all: $(BIN)
-
-# $(BIN): $(SRC)
-# 	$(CC) $(CFLAGS) $^ -o $@ -lcurl
-
-# clean:
-# 	$(RM) -rf $(BIN) *.dSYM
-
 CC = gcc
 CFLAGS = -g -Wall
 LIBS = -lcurl
 
 BIN = main
-SRC = main.c openai.c cJSON.c # Add openai.c here
+SRC = main.c openai.c cJSON.c
 OBJ = $(SRC:.c=.o)
 
 all: $(BIN)
