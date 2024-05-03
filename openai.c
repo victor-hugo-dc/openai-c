@@ -7,20 +7,20 @@
 #include <stdlib.h>
 #include <string.h>
 
-OpenAI* createOpenAI(char* apiKey, char* organization, char* project) {
+Client* OpenAI(char* apiKey, char* organization, char* project) {
     // API key must be defined
     if (apiKey == NULL) {
         return NULL;
     }
 
-    OpenAI* result = (OpenAI*)malloc(sizeof(OpenAI));
+    Client* result = (Client*) malloc(sizeof(Client));
 
     // Memory allocation failed
     if (result == NULL) {
         return NULL;
     }
 
-    ClientOptions* options = (ClientOptions*)malloc(sizeof(ClientOptions));
+    ClientOptions* options = (ClientOptions*) malloc(sizeof(ClientOptions));
     
     // Memory allocation failed
     if (options == NULL) {
@@ -48,7 +48,7 @@ OpenAI* createOpenAI(char* apiKey, char* organization, char* project) {
     return result;
 }
 
-void destroyOpenAI(OpenAI *object) {
+void destroyClient(Client *object) {
     if (object == NULL) {
         return;
     }
@@ -115,7 +115,7 @@ void destroyMessage(Message* message) {
     free(message);
 }
 
-Response* chat(OpenAI* openai, const char* model, const char* messages, float temperature) {
+Response* chat(Client* openai, const char* model, const char* messages, float temperature) {
     
     Response* response = NULL;
     char* url = NULL;
@@ -176,6 +176,24 @@ Response* chat(OpenAI* openai, const char* model, const char* messages, float te
     }
 
     root = cJSON_Parse(s.ptr);
+
+    cJSON* errorJson = cJSON_GetObjectItemCaseSensitive(root, "error");
+
+    response->error = NULL;
+    if (errorJson != NULL) {
+
+        char* message = cJSON_GetObjectItemCaseSensitive(errorJson, "message")->valuestring;
+        char* type = cJSON_GetObjectItemCaseSensitive(errorJson, "type")->valuestring;
+        char* param = cJSON_GetObjectItemCaseSensitive(errorJson, "param")->valuestring; // this can be NULL so we might have to change
+        char* code = cJSON_GetObjectItemCaseSensitive(errorJson, "code")->valuestring;
+
+        response->error = (Error*) malloc(sizeof(Error));
+        response->error->message = strdup(message);
+        response->error->type = strdup(param);
+        response->error->param = NULL; // this may have to change later
+        response->error->code = strdup(code);
+
+    }
 
     char *id = cJSON_GetObjectItemCaseSensitive(root, "id")->valuestring;
     char *object = cJSON_GetObjectItemCaseSensitive(root, "object")->valuestring;
@@ -263,6 +281,14 @@ void destroyResponse(Response* response) {
             destroyChoices(response->choices[i]);
         }
         free(response->choices);
+    }
+
+    if (response->error != NULL) {
+        free(response->error->message);
+        free(response->error->type);
+        free(response->error->param);
+        free(response->error->code);
+
     }
 
     // Free the response object itself

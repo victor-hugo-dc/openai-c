@@ -27,7 +27,7 @@ typedef struct {
     char* project;
     ClientOptions* _options;
 
-} OpenAI;
+} Client;
 
 typedef struct {
     char* ptr;
@@ -57,6 +57,13 @@ typedef struct {
 } Usage;
 
 typedef struct {
+    char* message;
+    char* type;
+    char* param;
+    char* code;
+} Error;
+
+typedef struct {
     char* id;
     char* object;
     long created;
@@ -68,40 +75,17 @@ typedef struct {
     int choices_count;
     
     char* system_fingerprint;
+    Error* error;
 
 } Response;
 
-// {
-//     "error": {
-//         "message": "Incorrect API key provided: OPENAIKEY. You can find your API key at https://platform.openai.com/account/api-keys.",
-//         "type": "invalid_request_error",
-//         "param": null,
-//         "code": "invalid_api_key"
-//     }
-// }
+Client* OpenAI(char* apiKey, char* organization, char* project);
+void destroyClient(Client* object);
 
-typedef struct {
-    char* message;
-    char* type;
-    char* param;
-    char* code;
-} Error;
-
-OpenAI* createOpenAI(char* apiKey, char* organization, char* project);
-void destroyOpenAI(OpenAI* object);
-
-Response* chat(OpenAI* openai, const char* model, const char* messages, float temperature); 
+Response* chat(Client* openai, const char* model, const char* messages, float temperature); 
 void destroyResponse(Response* response);
 
-Message* extractMessageFromJSON(cJSON* message);
 void destroyMessage(Message* message);
 
-Choices** extractChoicesFromJSON(cJSON* choices);
 void destroyChoicesList(Choices** choicesList, int count);
 void destroyChoices(Choices* choices);
-
-Usage* extractUsageFromJSON(cJSON* usage);
-void destroyUsage(Usage* usage);
-
-Error* extractErrorFromJSON(cJSON* error);
-void destroyError(Error* error);
