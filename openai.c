@@ -1,5 +1,5 @@
 #include "openai.h"
-#include "cJSON.h"
+#include <cjson/cJSON.h>
 #include <stddef.h>
 #include <curl/curl.h>
 #include <curl/easy.h>
@@ -8,21 +8,16 @@
 #include <string.h>
 
 Client* OpenAI(char* apiKey, char* organization, char* project) {
-    // API key must be defined
     if (apiKey == NULL) {
         return NULL;
     }
 
     Client* result = (Client*) malloc(sizeof(Client));
-
-    // Memory allocation failed
     if (result == NULL) {
         return NULL;
     }
 
     ClientOptions* options = (ClientOptions*) malloc(sizeof(ClientOptions));
-    
-    // Memory allocation failed
     if (options == NULL) {
         free(result);
         return NULL;
@@ -34,7 +29,6 @@ Client* OpenAI(char* apiKey, char* organization, char* project) {
     result->organization = strdup(organization);
     result->project = strdup(project);
 
-    // TODO: Allow user to pass these in as parameters
     options->apiKey = strdup(apiKey);
     options->organization = strdup(organization);
     options->project = strdup(project);
@@ -115,9 +109,9 @@ void destroyMessage(Message* message) {
     free(message);
 }
 
-Response* chat(Client* openai, const char* model, const char* messages, float temperature) {
+Completion* chat(Client* openai, const char* model, const char* messages, float temperature) {
     
-    Response* response = NULL;
+    Completion* response = NULL;
     char* url = NULL;
     char* authHeader = NULL;
     char* requestBody = NULL;
@@ -170,7 +164,7 @@ Response* chat(Client* openai, const char* model, const char* messages, float te
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
 
-    response = (Response*) malloc(sizeof(Response));
+    response = (Completion*) malloc(sizeof(Completion));
     if (response == NULL) {
         goto Exit;
     }
@@ -267,7 +261,7 @@ Exit:
     return response;
 }
 
-void destroyResponse(Response* response) {
+void destroyCompletion(Completion* response) {
     if (response == NULL) {
         return;
     }
