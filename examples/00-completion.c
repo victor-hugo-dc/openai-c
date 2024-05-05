@@ -14,6 +14,13 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
+    // Error handling
+    if (response->error != NULL) {
+        destroyCompletion(response);
+        destroyClient(openai);
+        return EXIT_FAILURE;
+    }
+
     printf("%s\n", response->choices[0]->message->content);
     
     destroyCompletion(response);
