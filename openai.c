@@ -117,6 +117,9 @@ Completion* chat(Client* openai, const char* model, const char* messages, float 
     char* requestBody = NULL;
     cJSON *root = NULL;
 
+    String s;
+    initString(&s);
+
     // Create URL Endpoint
     int length = snprintf(NULL, 0, "%s/%s", openai->_options->baseURL, "v1/chat/completions");
     url = (char*) malloc(length + 1);
@@ -140,9 +143,6 @@ Completion* chat(Client* openai, const char* model, const char* messages, float 
         goto Exit;
     }
     snprintf(requestBody, length + 1, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}], \"temperature\": %.1f}", model, messages, temperature);
-    
-    String s;
-    initString(&s);
 
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -160,6 +160,12 @@ Completion* chat(Client* openai, const char* model, const char* messages, float 
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
 
     CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        goto Exit;
+    }
 
     curl_slist_free_all(headers);
     curl_easy_cleanup(curl);
@@ -174,6 +180,7 @@ Completion* chat(Client* openai, const char* model, const char* messages, float 
     cJSON* errorJson = cJSON_GetObjectItemCaseSensitive(root, "error");
 
     response->error = NULL;
+    // idk if we have to check if its NULL or is cJSON_isNULL
     if (errorJson != NULL) {
 
         char* message = cJSON_GetObjectItemCaseSensitive(errorJson, "message")->valuestring;
@@ -304,4 +311,104 @@ void destroyChoices(Choices* choice) {
         free(choice->logprobs);
     }
     free(choice->finish_reason);
+}
+
+ModelList* models(Client* openai) {
+    ModelList* response = NULL;
+    char* url = NULL;
+    char* authHeader = NULL;
+    cJSON *root = NULL;
+
+    String s;
+    initString(&s);
+
+    // Create URL Endpoint
+    int length = snprintf(NULL, 0, "%s/%s", openai->_options->baseURL, "v1/models");
+    url = (char*) malloc(length + 1);
+    if (url == NULL) {
+        goto Exit;
+    }
+    snprintf(url, length + 1, "%s/%s", openai->_options->baseURL, "v1/models");
+
+    // Create Authorization Header
+    length = snprintf(NULL, 0, "Authorization: Bearer %s", openai->apiKey);
+    authHeader = (char*) malloc(length + 1);
+    if (authHeader == NULL) {
+        goto Exit;
+    }
+    snprintf(authHeader, length + 1, "Authorization: Bearer %s", openai->apiKey);
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        goto Exit;
+    }
+
+    // Set up CURL request
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, authHeader);
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
+
+    CURLcode res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        goto Exit;
+    }
+
+    response = (ModelList*) malloc(sizeof(ModelList));
+    if (response == NULL) {
+        goto Exit;
+    }
+    
+    root = cJSON_Parse(s.ptr);
+
+    char* object = cJSON_GetObjectItemCaseSensitive(root, "object")->valuestring;
+    response->object = strdup(object);
+
+    cJSON *data = cJSON_GetObjectItemCaseSensitive(root, "data");
+    int model_count = cJSON_GetArraySize(data);
+
+    response->data = (Model**) malloc(model_count * sizeof(Model*));
+
+    for (size_t i = 0; i < model_count; i++) {
+        response->data[i] = (Model*) malloc(sizeof(Model));
+        cJSON* model = cJSON_GetArrayItem(data, i);
+
+        char* id = cJSON_GetObjectItemCaseSensitive(model, "id")->valuestring;
+        char* individual_object = cJSON_GetObjectItemCaseSensitive(model, "object")->valuestring;
+        int created = cJSON_GetObjectItemCaseSensitive(model, "created")->valueint;
+        char* owned_by = cJSON_GetObjectItemCaseSensitive(model, "owned_by")->valuestring;
+
+        response->data[i]->id = strdup(id);
+        response->data[i]->object = strdup(individual_object);
+        response->data[i]->created = created;
+        response->data[i]->owned_by = strdup(owned_by);
+
+    }
+
+    response->model_count = model_count;
+
+Exit:
+    free(url);
+    free(authHeader);
+    free(s.ptr);
+    cJSON_Delete(root);
+    return response;
+}
+
+void destroyModels(ModelList* models) {
+    free(models->object);
+    for (size_t i = 0; i < models->model_count; i++) {
+        free(models->data[i]->id);
+        free(models->data[i]->object);
+        free(models->data[i]->owned_by);
+        free(models->data[i]);
+    }
+
+    free(models->data);
+    free(models);
 }

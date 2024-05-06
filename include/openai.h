@@ -89,3 +89,21 @@ void destroyMessage(Message* message);
 
 void destroyChoicesList(Choices** choicesList, int count);
 void destroyChoices(Choices* choices);
+
+typedef struct {
+    char* id;
+    char* object;
+    long created;
+    char* owned_by;
+
+} Model;
+
+typedef struct {
+    char* object;
+    Model** data;
+    int model_count;
+
+} ModelList;
+
+ModelList* models(Client* openai);
+void destroyModels(ModelList* models);
