@@ -21,4 +21,6 @@ int main(void) {
     
     destroyClient(openai);
     destroyModels(response);
+
+    return EXIT_SUCCESS;
 }
