@@ -8,7 +8,11 @@ int main(void) {
         return EXIT_FAILURE;
     }
     
-    Completion *response = chat(openai, "gpt-3.5-turbo-0125", "Hello world", 0.7);
+    // Adjust the GPT model and temperature accordingly
+    openai->chat_model = GPT_4;
+    openai->temperature = 0.7;
+
+    Completion *response = chat(openai, "What is the tallest mountain in the world?");
     if (response == NULL) {
         destroyClient(openai);
         return EXIT_FAILURE;

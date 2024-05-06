@@ -4,6 +4,26 @@
 #include <string.h>
 #include <cjson/cJSON.h>
 
+enum GPT {
+    GPT_3_5_TURBO_1106,
+    GPT_3_5_TURBO_16k,
+    GPT_4,
+    GPT_4_TURBO_2024_04_09,
+    GPT_4_0613,
+    GPT_4_TURBO,
+    GPT_4_VISION_PREVIEW,
+    GPT_3_5_TURBO_INSTRUCT_0914,
+    GPT_3_5_TURBO_INSTRUCT,
+    GPT_4_1106_VISION_PREVIEW,
+    GPT_4_0125_PREVIEW,
+    GPT_4_TURBO_PREVIEW,
+    GPT_3_5_TURBO_0125,
+    GPT_3_5_TURBO,
+    GPT_3_5_TURBO_0613,
+    GPT_4_1106_PREVIEW,
+    GPT_3_5_TURBO_16k_0613,
+};
+
 // TODO: Add ways to make the ClientOptions useful and configurable
 typedef struct {
     char* apiKey;
@@ -26,6 +46,9 @@ typedef struct {
     char* organization;
     char* project;
     ClientOptions* _options;
+
+    enum GPT chat_model;
+    double temperature;
 
 } Client;
 
@@ -82,7 +105,9 @@ typedef struct {
 Client* OpenAI(char* apiKey, char* organization, char* project);
 void destroyClient(Client* object);
 
-Completion* chat(Client* openai, const char* model, const char* messages, float temperature); 
+const char* getChatModelName(enum GPT model);
+
+Completion* chat(Client* openai, const char* messages); 
 void destroyCompletion(Completion* response);
 
 void destroyMessage(Message* message);

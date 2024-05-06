@@ -39,6 +39,9 @@ Client* OpenAI(char* apiKey, char* organization, char* project) {
 
     result->_options = options;
 
+    result->chat_model = GPT_3_5_TURBO;
+    result->temperature = 0.8;
+
     return result;
 }
 
@@ -109,7 +112,65 @@ void destroyMessage(Message* message) {
     free(message);
 }
 
-Completion* chat(Client* openai, const char* model, const char* messages, float temperature) {
+const char* getChatModelName(enum GPT model) {
+    switch (model) {
+        case GPT_3_5_TURBO_1106:
+            return "gpt-3.5-turbo-1106";
+
+        case GPT_3_5_TURBO_16k:
+            return "gpt-3.5-turbo-16k";
+
+        case GPT_4:
+            return "gpt-4";
+
+        case GPT_4_TURBO_2024_04_09:
+            return "gpt-4-turbo-2024-04-09";
+
+        case GPT_4_0613:
+            return "gpt-4-0613";
+        
+        case GPT_4_TURBO:
+            return "gpt-4-turbo";
+
+        case GPT_4_VISION_PREVIEW:
+            return "gpt-4-vision-preview";
+
+        case GPT_3_5_TURBO_INSTRUCT_0914:
+            return "gpt-3.5-turbo-instruct-0914";
+
+        case GPT_3_5_TURBO_INSTRUCT:
+            return "gpt-3.5-turbo-instruct";
+
+        case GPT_4_1106_VISION_PREVIEW:
+            return "gpt-4-1106-vision-preview";
+
+        case GPT_4_0125_PREVIEW:
+            return "gpt-4-0125-preview";
+
+        case GPT_4_TURBO_PREVIEW:
+            return "gpt-4-turbo-preview";
+
+        case GPT_3_5_TURBO_0125:
+            return "gpt-3.5-turbo-0125";
+
+        case GPT_3_5_TURBO:
+            return "gpt-3.5-turbo";
+        
+        case GPT_3_5_TURBO_0613:
+            return "gpt-3.5-turbo-0613";
+
+        case GPT_4_1106_PREVIEW:
+            return "gpt-4-1106-preview";
+
+        case GPT_3_5_TURBO_16k_0613:
+            return "gpt-3.5-turbo-16k-0613";
+
+        default:
+            return "gpt-3.5-turbo";
+    }
+}
+
+Completion* chat(Client* openai, const char* messages) {
     
     Completion* response = NULL;
     char* url = NULL;
@@ -137,12 +198,13 @@ Completion* chat(Client* openai, const char* model, const char* messages, float 
     snprintf(authHeader, length + 1, "Authorization: Bearer %s", openai->apiKey);
 
     // Create request body
-    length = snprintf(NULL, 0, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}], \"temperature\": %.1f}", model, messages, temperature);
+    const char* model = getChatModelName(openai->chat_model);
+    length = snprintf(NULL, 0, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}], \"temperature\": %.1f}", model, messages, openai->temperature);
     requestBody = (char*) malloc(length + 1);
     if (requestBody == NULL) {
         goto Exit;
     }
-    snprintf(requestBody, length + 1, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}], \"temperature\": %.1f}", model, messages, temperature);
+    snprintf(requestBody, length + 1, "{\"model\": \"%s\", \"messages\": [{\"role\": \"user\", \"content\": \"%s\"}], \"temperature\": %.1f}", model, messages, openai->temperature);
 
     CURL* curl = curl_easy_init();
     if (!curl) {
@@ -200,14 +262,21 @@ Completion* chat(Client* openai, const char* model, const char* messages, float 
     char *object = cJSON_GetObjectItemCaseSensitive(root, "object")->valuestring;
     int created = cJSON_GetObjectItemCaseSensitive(root, "created")->valueint;
     const char *model_string = cJSON_GetObjectItemCaseSensitive(root, "model")->valuestring;
-    char *system_fingerprint = cJSON_GetObjectItemCaseSensitive(root, "system_fingerprint")->valuestring;
+
+    cJSON *system_fingerprint = cJSON_GetObjectItemCaseSensitive(root, "system_fingerprint");
+    if (system_fingerprint != NULL) {
+        if (cJSON_IsString(system_fingerprint)) {
+            response->system_fingerprint = strdup(system_fingerprint->valuestring);
+        } else if (cJSON_IsNull(system_fingerprint)) {
+            response->system_fingerprint = strdup("null");
+        }
+    }
 
     // TODO: Robustly check for NULL
     response->id = strdup(id);
     response->object = strdup(object);
     response->created = created;
     response->model = strdup(model_string);
-    response->system_fingerprint = strdup(system_fingerprint);
 
     cJSON* usageJSON = cJSON_GetObjectItemCaseSensitive(root, "usage");
     response->usage = (Usage*) malloc(sizeof(Usage));
