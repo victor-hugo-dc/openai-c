@@ -24,6 +24,20 @@ enum GPT {
     GPT_3_5_TURBO_16k_0613,
 };
 
+enum TTS {
+    TTS_1,
+    TTS_1_HD,
+};
+
+enum VOICE {
+    ALLOY,
+    ECHO,
+    FABLE,
+    ONYX,
+    NOVA,
+    SHIMMER,
+};
+
 // TODO: Add ways to make the ClientOptions useful and configurable
 typedef struct {
     char* apiKey;
@@ -48,6 +62,9 @@ typedef struct {
     ClientOptions* _options;
 
     enum GPT chat_model;
+    enum TTS speech_model;
+    enum VOICE voice;
+
     double temperature;
 
 } Client;
@@ -132,3 +149,7 @@ typedef struct {
 
 ModelList* models(Client* openai);
 void destroyModels(ModelList* models);
+
+void transcribe(Client* openai, const char* message, const char* filename);
+const char* getVoice(enum VOICE voice);
+const char* getSpeechModel(enum TTS model);

@@ -42,6 +42,9 @@ Client* OpenAI(char* apiKey, char* organization, char* project) {
     result->chat_model = GPT_3_5_TURBO;
     result->temperature = 0.8;
 
+    result->speech_model = TTS_1;
+    result->voice = ALLOY;
+
     return result;
 }
 
@@ -480,4 +483,111 @@ void destroyModels(ModelList* models) {
 
     free(models->data);
     free(models);
+}
+
+const char* getSpeechModel(enum TTS model) {
+    switch (model) {
+        case TTS_1:
+            return "tts-1";
+        
+        case TTS_1_HD:
+            return "tts-1-hd";
+
+        default:
+            return "tts-1";
+    }
+}
+
+const char* getVoice(enum VOICE voice) {
+    switch (voice) {
+        case ALLOY:
+            return "alloy";
+
+        case ECHO:
+            return "echo";
+        
+        case FABLE:
+            return "fable";
+        
+        case ONYX:
+            return "onyx";
+        
+        case NOVA:
+            return "nova";
+        
+        case SHIMMER:
+            return "shimmer";
+        
+        default:
+            return "alloy";
+    }
+}
+
+void transcribe(Client* openai, const char* message, const char* filename) {
+
+    char* url = NULL;
+    char* authHeader = NULL;
+    char* requestBody = NULL;
+    CURLcode res;
+
+    // Create URL Endpoint
+    int length = snprintf(NULL, 0, "%s/%s", openai->_options->baseURL, "v1/audio/speech");
+    url = (char*) malloc(length + 1);
+    if (url == NULL) {
+        goto Exit;
+    }
+    snprintf(url, length + 1, "%s/%s", openai->_options->baseURL, "v1/audio/speech");
+    
+    // Create Authorization Header
+    length = snprintf(NULL, 0, "Authorization: Bearer %s", openai->apiKey);
+    authHeader = (char*) malloc(length + 1);
+    if (authHeader == NULL) {
+        goto Exit;
+    }
+    snprintf(authHeader, length + 1, "Authorization: Bearer %s", openai->apiKey);
+
+    // Create request body
+    const char* model = getSpeechModel(openai->speech_model);
+    const char* voice = getVoice(openai->voice);
+    length = snprintf(NULL, 0, "{\"model\": \"%s\", \"input\": \"%s\", \"voice\": \"%s\"}", model, message, voice);
+    requestBody = (char*) malloc(length + 1);
+    if (requestBody == NULL) {
+        goto Exit;
+    }
+    snprintf(requestBody, length + 1, "{\"model\": \"%s\", \"input\": \"%s\", \"voice\": \"%s\"}", model, message, voice);
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        goto Exit;
+    }
+
+    // Set up CURL request
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, authHeader);
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, requestBody);
+
+    // Here have some verification that the filename is of type .mp3
+    FILE *output_file = fopen(filename, "wb");
+    if (!output_file) {
+        curl_easy_cleanup(curl);
+        goto Exit;
+    }
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, output_file);
+    res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+    }
+
+    // Cleanup
+    fclose(output_file);
+    curl_easy_cleanup(curl);
+    curl_slist_free_all(headers);
+
+Exit:
+    free(url);
+    free(authHeader);
+    free(requestBody);
 }
