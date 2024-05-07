@@ -150,6 +150,6 @@ typedef struct {
 ModelList* models(Client* openai);
 void destroyModels(ModelList* models);
 
-void transcribe(Client* openai, const char* message, const char* filename);
+void generate_speech(Client* openai, const char* message, const char* filename);
 const char* getVoice(enum VOICE voice);
 const char* getSpeechModel(enum TTS model);

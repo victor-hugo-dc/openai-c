@@ -6,7 +6,7 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    transcribe(openai, "The quick brown fox jumps over the lazy dog.", "../output.mp3");
+    generate_speech(openai, "The quick brown fox jumps over the lazy dog.", "../output.mp3");
 
     destroyClient(openai);
     return EXIT_SUCCESS;

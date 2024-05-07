@@ -523,7 +523,7 @@ const char* getVoice(enum VOICE voice) {
     }
 }
 
-void transcribe(Client* openai, const char* message, const char* filename) {
+void generate_speech(Client* openai, const char* message, const char* filename) {
 
     char* url = NULL;
     char* authHeader = NULL;
