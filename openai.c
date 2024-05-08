@@ -464,6 +464,10 @@ ModelList* models(Client* openai) {
 
     response->model_count = model_count;
 
+    // I believe this goes here
+    curl_slist_free_all(headers);
+    curl_easy_cleanup(curl);
+
 Exit:
     free(url);
     free(authHeader);
@@ -590,4 +594,112 @@ Exit:
     free(url);
     free(authHeader);
     free(requestBody);
+}
+
+int valid_filename(const char *filename) {
+    const char *valid_extensions[] = {"flac", "mp3", "mp4", "mpeg", "mpga", "m4a", "ogg", "wav", "webm"};
+    size_t num_extensions = sizeof(valid_extensions) / sizeof(valid_extensions[0]);
+    
+    const char *dot = strrchr(filename, '.');
+    if (dot == NULL) {
+        return 0;
+    }
+    
+    const char *extension = dot + 1;
+    for (size_t i = 0; i < num_extensions; i++) {
+        if (strcmp(extension, valid_extensions[i]) == 0) {
+            return 1;
+        }
+    }
+    
+    return 0;
+}
+
+Transcription* transcribe(Client* openai, const char* filepath) {
+    Transcription* response = NULL;
+    char* url = NULL;
+    char* authHeader = NULL;
+    char* requestBody = NULL;
+    CURLcode res;
+    cJSON* root = NULL;
+
+    String s;
+    initString(&s);
+
+    if (valid_filename(filepath) == 0) {
+        fprintf(stderr, "Invalid filetype.\n");
+        goto Exit;
+    }
+
+    // Create URL Endpoint
+    int length = snprintf(NULL, 0, "%s/%s", openai->_options->baseURL, "v1/audio/transcriptions");
+    url = (char*) malloc(length + 1);
+    if (url == NULL) {
+        goto Exit;
+    }
+    snprintf(url, length + 1, "%s/%s", openai->_options->baseURL, "v1/audio/transcriptions");
+
+    length = snprintf(NULL, 0, "Authorization: Bearer %s", openai->apiKey);
+    authHeader = (char*) malloc(length + 1);
+    if (authHeader == NULL) {
+        goto Exit;
+    }
+    snprintf(authHeader, length + 1, "Authorization: Bearer %s", openai->apiKey);
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        goto Exit;
+    }
+
+    // Set up CURL request
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, authHeader);
+    headers = curl_slist_append(headers, "Content-Type: multipart/form-data");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    struct curl_httppost *post = NULL;
+    struct curl_httppost *last = NULL;
+
+    curl_formadd(&post, &last, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filepath, CURLFORM_END);
+    curl_formadd(&post, &last, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, "whisper-1", CURLFORM_END);
+
+    curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
+
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
+
+    res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        curl_formfree(post);
+        curl_global_cleanup();
+        goto Exit;
+    }
+
+    root = cJSON_Parse(s.ptr);
+    char* text = cJSON_GetObjectItemCaseSensitive(root, "text")->valuestring;
+    response = (Transcription*) malloc(sizeof(Transcription));
+    response->text = strdup(text);
+
+    curl_easy_cleanup(curl);
+    curl_formfree(post);
+    curl_global_cleanup();
+
+Exit:
+    free(url);
+    free(authHeader);
+    free(requestBody);
+    free(s.ptr);
+    cJSON_Delete(root);
+
+    return response;
+}
+
+void destroyTranscription(Transcription* transcription) {
+    free(transcription->text);
+    free(transcription);
 }

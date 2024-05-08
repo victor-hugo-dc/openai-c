@@ -153,3 +153,12 @@ void destroyModels(ModelList* models);
 void generate_speech(Client* openai, const char* message, const char* filename);
 const char* getVoice(enum VOICE voice);
 const char* getSpeechModel(enum TTS model);
+
+typedef struct {
+    char* text;
+
+} Transcription;
+
+int valid_filename(const char *filename);
+Transcription* transcribe(Client* openai, const char* filepath);
+void destroyTranscription(Transcription* transcription);
