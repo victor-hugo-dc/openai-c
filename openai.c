@@ -45,6 +45,8 @@ Client* OpenAI(char* apiKey, char* organization, char* project) {
     result->speech_model = TTS_1;
     result->voice = ALLOY;
 
+    result->verbose = false;
+
     return result;
 }
 
@@ -666,6 +668,11 @@ Transcription* transcribe(Client* openai, const char* filepath) {
     curl_formadd(&post, &last, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filepath, CURLFORM_END);
     curl_formadd(&post, &last, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, "whisper-1", CURLFORM_END);
 
+    if (openai->verbose) {
+        curl_formadd(&post, &last, CURLFORM_COPYNAME, "timestamp_granularities[]", CURLFORM_COPYCONTENTS, "word", CURLFORM_END);
+        curl_formadd(&post, &last, CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "verbose_json", CURLFORM_END);
+    }
+
     curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
 
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
@@ -710,11 +717,55 @@ Transcription* transcribe(Client* openai, const char* filepath) {
         response->error->param = strdup(param); // this may have to change later
         response->error->code = strdup(code);
         response->text = NULL;
+
+        response->duration = 0;
+        response->language = NULL;
+        response->task = NULL;
+        response->words = NULL;
+        response->word_count = 0;
         
     } else {
         char* text = text_object->valuestring;
         response->text = strdup(text);
         response->error = NULL;
+
+        if (openai->verbose) {
+            char* task = cJSON_GetObjectItemCaseSensitive(root, "task")->valuestring;
+            char* language = cJSON_GetObjectItemCaseSensitive(root, "language")->valuestring;
+            double duration = cJSON_GetObjectItemCaseSensitive(root, "duration")->valuedouble;
+            cJSON* wordsJSON = cJSON_GetObjectItemCaseSensitive(root, "words");
+
+            response->task = strdup(task);
+            response->language = strdup(language);
+            response->duration = duration;
+
+            int word_count = cJSON_GetArraySize(wordsJSON);
+            response->words = (Word**) malloc(word_count * sizeof(Word*));
+
+            for (size_t i = 0; i < word_count; i++) {
+                response->words[i] = (Word*) malloc(sizeof(Word));
+
+                cJSON* object = cJSON_GetArrayItem(wordsJSON, i);
+                char* word = cJSON_GetObjectItemCaseSensitive(object, "word")->valuestring;
+                double start = cJSON_GetObjectItemCaseSensitive(object, "start")->valuedouble;
+                double end = cJSON_GetObjectItemCaseSensitive(object, "end")->valuedouble;
+
+                response->words[i]->word = strdup(word);
+                response->words[i]->start = start;
+                response->words[i]->end = end;
+
+            }
+
+            response->word_count = word_count;
+
+        } else {
+            response->duration = 0;
+            response->language = NULL;
+            response->task = NULL;
+            response->words = NULL;
+            response->word_count = 0;
+
+        }
     }
 
     curl_easy_cleanup(curl);
@@ -740,6 +791,19 @@ void destroyTranscription(Transcription* transcription) {
         free(transcription->error);
 
     }
+
+    if (transcription->words != NULL) {
+        for (size_t i = 0; i < transcription->word_count; i++) {
+            free(transcription->words[i]->word);
+            free(transcription->words[i]);
+        }
+        
+        free(transcription->words); 
+    }
+    
+    free(transcription->task);
+    free(transcription->language);
+
     free(transcription->text);
     free(transcription);
 }

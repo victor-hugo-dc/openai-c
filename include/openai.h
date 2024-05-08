@@ -67,6 +67,8 @@ typedef struct {
 
     double temperature;
 
+    int verbose; // default to zero
+
 } Client;
 
 typedef struct {
@@ -155,6 +157,18 @@ const char* getVoice(enum VOICE voice);
 const char* getSpeechModel(enum TTS model);
 
 typedef struct {
+    char* word;
+    double start;
+    double end;
+} Word;
+
+typedef struct {
+    char* task;
+    char* language;
+    double duration;
+    Word** words;
+    int word_count;
+
     char* text;
     Error* error;
 
