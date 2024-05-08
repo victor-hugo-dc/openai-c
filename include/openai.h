@@ -156,6 +156,7 @@ const char* getSpeechModel(enum TTS model);
 
 typedef struct {
     char* text;
+    Error* error;
 
 } Transcription;
 

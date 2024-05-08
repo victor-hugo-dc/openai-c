@@ -255,7 +255,7 @@ Completion* chat(Client* openai, const char* messages) {
 
         response->error = (Error*) malloc(sizeof(Error));
         response->error->message = strdup(message);
-        response->error->type = strdup(param);
+        response->error->type = strdup(type);
         response->error->param = NULL; // this may have to change later
         response->error->code = strdup(code);
 
@@ -361,6 +361,7 @@ void destroyCompletion(Completion* response) {
         free(response->error->type);
         free(response->error->param);
         free(response->error->code);
+        free(response->error);
 
     }
 
@@ -681,9 +682,40 @@ Transcription* transcribe(Client* openai, const char* filepath) {
     }
 
     root = cJSON_Parse(s.ptr);
-    char* text = cJSON_GetObjectItemCaseSensitive(root, "text")->valuestring;
+
     response = (Transcription*) malloc(sizeof(Transcription));
-    response->text = strdup(text);
+
+    cJSON* text_object = cJSON_GetObjectItemCaseSensitive(root, "text");
+    if (text_object == NULL) {
+        cJSON* errorJson = cJSON_GetObjectItemCaseSensitive(root, "error");
+
+        char* message = cJSON_GetObjectItemCaseSensitive(errorJson, "message")->valuestring;
+        char* type = cJSON_GetObjectItemCaseSensitive(errorJson, "type")->valuestring;
+        
+        char* param;
+        cJSON* parameters = cJSON_GetObjectItemCaseSensitive(errorJson, "param");
+        if (cJSON_IsNull(parameters)) {
+            param = "null";
+
+        } else {
+            param = parameters->valuestring;
+
+        }
+
+        char* code = cJSON_GetObjectItemCaseSensitive(errorJson, "code")->valuestring;
+
+        response->error = (Error*) malloc(sizeof(Error));
+        response->error->message = strdup(message);
+        response->error->type = strdup(type);
+        response->error->param = strdup(param); // this may have to change later
+        response->error->code = strdup(code);
+        response->text = NULL;
+        
+    } else {
+        char* text = text_object->valuestring;
+        response->text = strdup(text);
+        response->error = NULL;
+    }
 
     curl_easy_cleanup(curl);
     curl_formfree(post);
@@ -700,6 +732,14 @@ Exit:
 }
 
 void destroyTranscription(Transcription* transcription) {
+    if (transcription->error != NULL) {
+        free(transcription->error->message);
+        free(transcription->error->type);
+        free(transcription->error->param);
+        free(transcription->error->code);
+        free(transcription->error);
+
+    }
     free(transcription->text);
     free(transcription);
 }

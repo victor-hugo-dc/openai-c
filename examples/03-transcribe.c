@@ -12,7 +12,13 @@ int main(void) {
         return EXIT_FAILURE;
     }
 
-    printf("%s\n", transcription->text);
+    if (transcription->error == NULL) {
+        printf("%s\n", transcription->text);
+
+    } else {
+        printf("%s\n", transcription->error->message);
+        
+    }
 
     destroyClient(openai);
     destroyTranscription(transcription);
