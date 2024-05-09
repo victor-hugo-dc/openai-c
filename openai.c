@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-Client* OpenAI(char* apiKey, char* organization, char* project) {
+Client* OpenAI(char* apiKey) {
     if (apiKey == NULL) {
         return NULL;
     }
@@ -26,12 +26,12 @@ Client* OpenAI(char* apiKey, char* organization, char* project) {
 
     // Allocate memory and copy the strings
     result->apiKey = strdup(apiKey);
-    result->organization = strdup(organization);
-    result->project = strdup(project);
+    result->organization = NULL;
+    result->project = NULL;
 
     options->apiKey = strdup(apiKey);
-    options->organization = strdup(organization);
-    options->project = strdup(project);
+    options->organization = NULL;
+    options->project = NULL;
     options->baseURL = "https://api.openai.com/";
     options->timeout = 600000;
     options->maxRetries = 2;

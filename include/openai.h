@@ -121,7 +121,7 @@ typedef struct {
 
 } Completion;
 
-Client* OpenAI(char* apiKey, char* organization, char* project);
+Client* OpenAI(char* apiKey);
 void destroyClient(Client* object);
 
 const char* getChatModelName(enum GPT model);

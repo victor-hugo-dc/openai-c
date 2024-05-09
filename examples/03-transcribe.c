@@ -1,7 +1,7 @@
 #include "openai.h"
 
 int main(void) {
-    Client* openai = OpenAI("MY-API-KEY", "Organization", "Project");
+    Client* openai = OpenAI("MY-API-KEY");
     if (openai == NULL) {
         return EXIT_FAILURE;
     }
