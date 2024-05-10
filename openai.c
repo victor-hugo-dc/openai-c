@@ -807,3 +807,204 @@ void destroyTranscription(Transcription* transcription) {
     free(transcription->text);
     free(transcription);
 }
+
+Translation* translate(Client* openai, const char* filepath) {
+    Translation* response = NULL;
+    char* url = NULL;
+    char* authHeader = NULL;
+    char* requestBody = NULL;
+    CURLcode res;
+    cJSON* root = NULL;
+
+    String s;
+    initString(&s);
+
+    if (valid_filename(filepath) == 0) {
+        fprintf(stderr, "Invalid filetype.\n");
+        goto Exit;
+    }
+
+    // Create URL Endpoint
+    int length = snprintf(NULL, 0, "%s/%s", openai->_options->baseURL, "v1/audio/translations");
+    url = (char*) malloc(length + 1);
+    if (url == NULL) {
+        goto Exit;
+    }
+    snprintf(url, length + 1, "%s/%s", openai->_options->baseURL, "v1/audio/translations");
+
+    length = snprintf(NULL, 0, "Authorization: Bearer %s", openai->apiKey);
+    authHeader = (char*) malloc(length + 1);
+    if (authHeader == NULL) {
+        goto Exit;
+    }
+    snprintf(authHeader, length + 1, "Authorization: Bearer %s", openai->apiKey);
+
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        goto Exit;
+    }
+
+    // Set up CURL request
+    struct curl_slist* headers = NULL;
+    headers = curl_slist_append(headers, authHeader);
+    headers = curl_slist_append(headers, "Content-Type: multipart/form-data");
+
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+    struct curl_httppost *post = NULL;
+    struct curl_httppost *last = NULL;
+
+    curl_formadd(&post, &last, CURLFORM_COPYNAME, "file", CURLFORM_FILE, filepath, CURLFORM_END);
+    curl_formadd(&post, &last, CURLFORM_COPYNAME, "model", CURLFORM_COPYCONTENTS, "whisper-1", CURLFORM_END);
+
+    if (openai->verbose) {
+        curl_formadd(&post, &last, CURLFORM_COPYNAME, "timestamp_granularities[]", CURLFORM_COPYCONTENTS, "word", CURLFORM_END);
+        curl_formadd(&post, &last, CURLFORM_COPYNAME, "response_format", CURLFORM_COPYCONTENTS, "verbose_json", CURLFORM_END);
+    }
+
+    curl_easy_setopt(curl, CURLOPT_HTTPPOST, post);
+
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, writefunc);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &s);
+
+    res = curl_easy_perform(curl);
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n", curl_easy_strerror(res));
+        curl_slist_free_all(headers);
+        curl_easy_cleanup(curl);
+        curl_formfree(post);
+        curl_global_cleanup();
+        goto Exit;
+    }
+
+    root = cJSON_Parse(s.ptr);
+
+    response = (Translation*) malloc(sizeof(Translation));
+
+    cJSON* text_object = cJSON_GetObjectItemCaseSensitive(root, "text");
+
+    if (text_object == NULL) {
+        cJSON* errorJson = cJSON_GetObjectItemCaseSensitive(root, "error");
+
+        char* message = cJSON_GetObjectItemCaseSensitive(errorJson, "message")->valuestring;
+        char* type = cJSON_GetObjectItemCaseSensitive(errorJson, "type")->valuestring;
+        
+        char* param;
+        cJSON* parameters = cJSON_GetObjectItemCaseSensitive(errorJson, "param");
+        if (cJSON_IsNull(parameters)) {
+            param = "null";
+
+        } else {
+            param = parameters->valuestring;
+
+        }
+
+        char* code = cJSON_GetObjectItemCaseSensitive(errorJson, "code")->valuestring;
+
+        response->error = (Error*) malloc(sizeof(Error));
+        response->error->message = strdup(message);
+        response->error->type = strdup(type);
+        response->error->param = strdup(param); // this may have to change later
+        response->error->code = strdup(code);
+        response->text = NULL;
+
+        response->duration = 0;
+        response->language = NULL;
+        response->task = NULL;
+        response->segments = NULL;
+        response->segments_size = 0;
+        
+    } else {
+        char* text = text_object->valuestring;
+        response->text = strdup(text);
+        response->error = NULL;
+
+        if (openai->verbose) {
+            char* task = cJSON_GetObjectItemCaseSensitive(root, "task")->valuestring;
+            char* language = cJSON_GetObjectItemCaseSensitive(root, "language")->valuestring;
+            double duration = cJSON_GetObjectItemCaseSensitive(root, "duration")->valuedouble;
+            cJSON* segmentsJSON = cJSON_GetObjectItemCaseSensitive(root, "segments");
+
+            response->task = strdup(task);
+            response->language = strdup(language);
+            response->duration = duration;
+
+            int segments_count = cJSON_GetArraySize(segmentsJSON);
+            response->segments = (Segment**) malloc(segments_count * sizeof(Segment*));
+            response->segments_size = segments_count;
+
+            for (size_t i = 0; i < segments_count; i++) {
+                cJSON* segment = cJSON_GetArrayItem(segmentsJSON, i);
+                response->segments[i] = (Segment*) malloc(sizeof(Segment));
+
+                response->segments[i]->id = cJSON_GetObjectItemCaseSensitive(segment, "id")->valueint;
+                response->segments[i]->seek = cJSON_GetObjectItemCaseSensitive(segment, "seek")->valueint;
+                response->segments[i]->start = cJSON_GetObjectItemCaseSensitive(segment, "start")->valueint;
+                response->segments[i]->end = cJSON_GetObjectItemCaseSensitive(segment, "end")->valueint;
+
+                char* segment_string = cJSON_GetObjectItemCaseSensitive(segment, "text")->valuestring;
+                response->segments[i]->text = strdup(segment_string);
+
+                response->segments[i]->temperature = cJSON_GetObjectItemCaseSensitive(segment, "temperature")->valuedouble;
+                response->segments[i]->avg_logprob = cJSON_GetObjectItemCaseSensitive(segment, "avg_logprob")->valuedouble;
+                response->segments[i]->compression_ratio = cJSON_GetObjectItemCaseSensitive(segment, "compression_ratio")->valuedouble;
+                response->segments[i]->no_speech_prob = cJSON_GetObjectItemCaseSensitive(segment, "no_speech_prob")->valuedouble;
+
+                cJSON* tokenslist = cJSON_GetObjectItemCaseSensitive(segment, "tokens");
+
+                int size = cJSON_GetArraySize(tokenslist);
+
+                response->segments[i]->tokens = (int*) malloc(size * sizeof(int));
+                response->segments[i]->tokens_size = size;
+
+                for (size_t j = 0; j < size; j++) {
+                    cJSON* token = cJSON_GetArrayItem(tokenslist, j);
+                    response->segments[i]->tokens[j] = token->valueint;
+
+                }
+            }
+
+        } else {
+            response->task = NULL;
+            response->language = NULL;
+            response->duration = 0;
+            response->segments = NULL;
+            response->segments_size = 0;
+
+        }
+    }
+
+Exit:
+    free(url);
+    free(authHeader);
+    free(requestBody);
+    free(s.ptr);
+    cJSON_Delete(root);
+    return response;
+}
+
+void destroyTranslation(Translation* translation) {
+    if (translation->error != NULL) {
+        free(translation->error->message);
+        free(translation->error->type);
+        free(translation->error->param);
+        free(translation->error->code);
+        free(translation->error);
+
+    }
+
+    for (size_t i = 0; i < translation->segments_size; i++) {
+        free(translation->segments[i]->text);
+        free(translation->segments[i]->tokens);
+        free(translation->segments[i]);
+
+    }
+    
+    free(translation->segments);
+    free(translation->task);
+    free(translation->language);
+
+    free(translation->text);
+    free(translation);
+}

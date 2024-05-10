@@ -177,3 +177,36 @@ typedef struct {
 int valid_filename(const char *filename);
 Transcription* transcribe(Client* openai, const char* filepath);
 void destroyTranscription(Transcription* transcription);
+
+typedef struct {
+    int id;
+    int seek;
+    int start;
+    int end;
+    char* text;
+
+    int* tokens;
+    int tokens_size;
+
+    double temperature;
+    double avg_logprob;
+    double compression_ratio;
+    double no_speech_prob;
+
+} Segment;
+
+typedef struct {
+    char* task;
+    char* language;
+    double duration;
+    char* text;
+
+    Segment** segments;
+    int segments_size;
+
+    Error* error;
+
+} Translation;
+
+Translation* translate(Client* openai, const char* filepath);
+void destroyTranslation(Translation* translation);
